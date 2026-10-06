@@ -39,43 +39,50 @@ Primary files: `src/app/globals.css`, `src/app/(main)/page.tsx`, `src/components
 
 ## 3. Cloudflare media proposal
 
-Current flow: the browser obtains admin-only authorization from `/api/upload`, then uploads directly to ImageKit. File bodies already bypass the Next.js server. Before migrating, identify the actual constraint: upload-size limit, quota, processing time, cost, connection failure, or playback performance.
+Current flow: the browser obtains admin-only authorization from `/api/upload`, then uploads directly to ImageKit. File bodies already bypass the Next.js server. The confirmed constraint is ImageKit's free-tier quota being consumed during development as well as production. The target is to stay within a free allowance and keep routine development independent of cloud quotas.
 
-### Recommended split
+### Recommended starting point: R2 and local development storage
 
 | Media | Proposed service | Reason |
 | --- | --- | --- |
-| Course thumbnails and attachments | Cloudflare R2 | S3-compatible object storage and direct uploads |
-| Paid course videos | Cloudflare Stream | Managed video processing, adaptive playback, resumable uploads, and signed access |
+| Course thumbnails and attachments | Cloudflare R2 Standard | S3-compatible object storage and direct uploads |
+| Paid course videos | Private Cloudflare R2 Standard objects | Pre-encoded MP4 playback through purchase-authorized, expiring GET URLs |
+| Routine development | Local S3-compatible storage, such as MinIO | Test uploads and access flows without consuming the cloud allowance |
 
-R2 alone is reasonable for small, pre-encoded MP4 files, but it does not transcode video or automatically provide adaptive streaming. Replacing ImageKit video URLs with R2 URLs is not a complete video-platform migration.
+R2 is suitable for an initial portfolio-scale implementation using pre-encoded, browser-compatible MP4 files. It does not transcode video or automatically provide adaptive streaming. Prepare H.264/AAC video with MP4 fast-start metadata locally, and test seeking and playback on mobile. Use a native video player with `preload="metadata"`; add a way to refresh an expired playback URL after rechecking access.
+
+Cloudflare's published R2 Standard free allowance, checked on October 6, 2026, is 10 GB-month of storage, 1 million Class A operations, and 10 million Class B operations per month, with free direct R2 egress. This is a metered allowance, not an unlimited service or automatic hard spending cap. Infrequent Access storage is not included in the free tier.
+
+Separate development and production buckets isolate assets and credentials, but share the account's allowance. Use small local media fixtures for routine development, a disposable R2 development bucket for occasional integration checks, and a separate production bucket. Expire temporary development objects and abort unfinished multipart uploads. Storage expiration reduces future consumption; it does not undo operations already used.
+
+Cloudflare Stream is a future paid upgrade if adaptive video becomes necessary. Its current published price is $5/month per 1,000 stored minutes plus $1 per 1,000 delivered minutes; it is not part of R2's free tier.
 
 ### Upload and playback flow
 
 1. An admin requests an upload session from Next.js. The server validates the intended file and generates a unique asset identifier.
-2. For R2, return a short-lived presigned PUT URL with the expected content type. Configure bucket CORS for the application's origins; retain credentials only on the server.
-3. For Stream, provision a one-time direct-upload URL with signed playback required. Use tus for resumable uploads; Cloudflare requires it for videos over 200 MB.
-4. The browser uploads directly to Cloudflare and displays progress. After upload, verify the R2 object or confirm Stream processing status before allowing the asset to be attached to a published course. A successful upload is not the same as playable video.
-5. Store an object key or Stream video ID, provider, and processing state in the database, rather than a temporary playback URL.
-6. Keep course purchase checks on the server. After authorization, issue a short-lived Stream playback token (or a presigned GET for private R2 files).
+2. Return a short-lived presigned PUT URL with the expected content type. Configure bucket CORS for the application's origins; retain credentials only on the server. Use the same application-side storage interface with a configurable local S3 endpoint during development.
+3. The browser uploads directly to storage and displays progress. Use multipart uploads for large files, with retryable parts and explicit completion/abort handling. Client-side file checks improve feedback; the completion endpoint must also validate the stored object's size and metadata before accepting it.
+4. Verify the object before allowing it to be attached to a published course. Encode and check video compatibility before upload, since R2 does not process the video.
+5. Store an object key, provider, and upload state in the database, rather than a temporary playback URL.
+6. Keep course purchase checks on the server. After authorization, issue a short-lived presigned GET for the private video. Test byte-range requests and expiry behavior during seeking.
 
 Public thumbnails and paid media need separate delivery policies. R2 S3 presigned URLs use the R2 API hostname and cannot simply be rewritten to a custom CDN domain.
 
 ### Migration sequence
 
-1. Confirm typical video sizes/durations, expected viewing volume, the ImageKit limitation, and the acceptable monthly budget.
-2. Configure a development R2 bucket and Stream access; prove one thumbnail upload and one signed video playback.
+1. Estimate total encoded video storage and expected viewing volume against R2's allowance. Start with a small representative catalog.
+2. Configure local S3-compatible storage and a disposable R2 development bucket; prove one thumbnail upload and one signed MP4 playback against both. Use integration checks to catch differences between local S3 behavior and R2.
 3. Add provider-aware media fields and support both existing ImageKit assets and new Cloudflare assets during the transition.
 4. Replace the upload UI and player integration; preserve the existing purchase gate.
-5. Copy existing assets, verify processing/playback, and switch course references in batches. Retain the original references for rollback until verification is complete.
+5. Copy existing assets, verify file integrity and playback, and switch course references in batches. Retain the original references for rollback until verification is complete.
 6. Remove the old provider integration after all active assets and access flows have been checked.
 
-Acceptance checks: non-admin upload rejection, non-purchaser playback rejection, expired-token rejection, successful purchaser playback, interrupted-upload recovery, processing failure display, and repeated payment-webhook delivery without duplicate purchases.
+Acceptance checks: non-admin upload rejection, non-purchaser playback rejection, expired-URL rejection, successful purchaser playback and seeking, interrupted-upload recovery, upload validation failure display, and repeated payment-webhook delivery without duplicate purchases. Verify that development points to local storage by default and that temporary cloud assets are cleaned up.
 
 References:
 - [R2 presigned URLs](https://developers.cloudflare.com/r2/api/s3/presigned-urls/)
-- [Stream direct creator uploads](https://developers.cloudflare.com/stream/uploading-videos/direct-creator-uploads/)
-- [Stream signed playback](https://developers.cloudflare.com/stream/viewing-videos/securing-your-stream/)
+- [R2 pricing and free allowance](https://developers.cloudflare.com/r2/pricing/)
+- [Stream pricing, for a future paid upgrade](https://developers.cloudflare.com/stream/pricing/)
 
 ## 4. Demo and screenshots
 
