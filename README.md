@@ -143,7 +143,7 @@ pnpm vercel-build
 
 This command applies committed database migrations, generates Prisma Client, and builds Next.js. Use a database dedicated to this test instance. If its runtime connection is pooled, provide the direct connection as `DIRECT_URL` for migrations.
 
-Use the stable project URL, such as `https://your-project.vercel.app`, throughout the configuration. A test instance can use Vercel's **Production** deployment environment while keeping Polar in **sandbox**. Add these variables to that environment in Vercel:
+Use the stable project URL, such as `https://your-project.vercel.app`, throughout the configuration. A test instance can use Vercel's **Production** deployment environment while keeping Polar in **sandbox**. Local environment files are excluded from CLI uploads by `.vercelignore`. Add these variables to that environment in Vercel:
 
 | Variable | Value |
 | --- | --- |
