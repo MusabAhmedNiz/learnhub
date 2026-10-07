@@ -1,3 +1,5 @@
+import { courseApiSchema } from "@/lib/validations";
+import { verifyCourseMedia } from "@/lib/course-media";
 import { auth } from "@/auth";
 import prisma from "@/lib/prisma";
 import { headers } from "next/headers";
@@ -12,26 +14,30 @@ async function adminCheck() {
 }
 
 export async function GET() {
-  const courses = await prisma.course.findMany({
-    select: {
-      id: true,
-      title: true,
-      price: true,
-      image: true,
-      productId: true,
-    },
-  });
-  return NextResponse.json(courses , { status: 200 });
+  try {
+    const courses = await prisma.course.findMany({
+      orderBy: { title: "asc" },
+      select: { id: true, title: true, price: true, image: true, productId: true },
+    });
+    return NextResponse.json(courses);
+  } catch {
+    return NextResponse.json({ error: "The course catalog could not be loaded." }, { status: 500 });
+  }
 }
 
 export async function POST(request: Request) {
   try {
     const admin = await adminCheck();
     if (!admin) {
-  return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-}
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
 
-    const { title, price, image, productId, video } = await request.json();
+    const parsed = courseApiSchema.safeParse(await request.json().catch(() => null));
+    if (!parsed.success) return NextResponse.json({ error: parsed.error.issues[0].message }, { status: 400 });
+    try { await verifyCourseMedia(parsed.data); } catch {
+      return NextResponse.json({ error: "Upload valid course media before saving." }, { status: 400 });
+    }
+    const { title, price, image, productId, video } = parsed.data;
     await prisma.course.create({
       data: {
         title,

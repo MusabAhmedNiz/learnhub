@@ -543,8 +543,14 @@ export type $CoursePayload<ExtArgs extends runtime.Types.Extensions.InternalArgs
     id: string
     title: string
     price: runtime.Decimal
+    /**
+     * Thumbnail object key in the configured S3-compatible bucket.
+     */
     image: string
     productId: string
+    /**
+     * Private video object key in the configured S3-compatible bucket.
+     */
     video: string
   }, ExtArgs["result"]["course"]>
   composites: {}

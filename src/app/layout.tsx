@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
-import { ImageKitProvider } from "@imagekit/next";
 import "./globals.css";
+import QueryProvider from "@/components/QueryProvider";
 
 const inter = Inter({
   variable: "--font-inter",
@@ -21,11 +21,13 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className={`${inter.variable} h-full`} data-scroll-behavior="smooth">
+    <html
+      lang="en"
+      className={`${inter.variable} h-full`}
+      data-scroll-behavior="smooth"
+    >
       <body className="min-h-full flex flex-col antialiased">
-        <ImageKitProvider urlEndpoint={process.env.NEXT_PUBLIC_IMAGEKIT_URL_ENDPOINT!}>
-          {children}
-        </ImageKitProvider>
+        <QueryProvider>{children}</QueryProvider>
       </body>
     </html>
   );

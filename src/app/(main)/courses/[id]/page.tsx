@@ -1,3 +1,4 @@
+import { thumbnailSrc } from "@/lib/media";
 import type { Metadata } from "next";
 import { auth } from "@/auth";
 import { headers } from "next/headers";
@@ -7,6 +8,7 @@ import Link from "next/link";
 import Image from "next/image";
 import BuyButton from "@/components/BuyButton";
 import VideoPlayer from "@/components/VideoPlayer";
+import CoursePlaceholder from "@/components/CoursePlaceholder";
 
 interface Props {
   params: Promise<{ id: string }>;
@@ -38,65 +40,57 @@ export default async function WatchCoursePage({ params }: Props) {
     : null;
 
   // Not purchased (or not logged in) — show course preview + buy prompt
-  if (!purchase) {
+  if (!purchase && session?.user.role !== "admin") {
     return (
-      <div className="max-w-3xl mx-auto px-6 py-20 text-center animate-fade-in">
-        {/* Course thumbnail preview */}
-        {course.image && course.image.length > 0 && (
-          <div
-            className="rounded-2xl overflow-hidden mb-8 mx-auto"
-            style={{ maxWidth: 560, border: "1px solid var(--border)" }}
-          >
-            <Image
-              src={course.image}
-              alt={course.title}
-              width={560}
-              height={315}
-              style={{ width: "100%", height: "auto", display: "block", objectFit: "cover" }}
-            />
+      <div className="page-width course-detail">
+        <Link href="/#explore" className="detail-back">
+          ← All courses
+        </Link>
+        <div className="detail-grid">
+          <div className="detail-image">
+            {course.image ? (
+              <Image
+                src={thumbnailSrc(course.id)}
+                unoptimized
+                alt={course.title}
+                width={720}
+                height={450}
+                className="w-full h-full object-cover"
+              />
+            ) : (
+              <CoursePlaceholder />
+            )}
           </div>
-        )}
-
-        <div
-          className="w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-5"
-          style={{ background: "var(--accent-light)" }}
-        >
-          <svg
-            width="30"
-            height="30"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="var(--accent)"
-            strokeWidth="1.5"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            aria-hidden="true"
-          >
-            <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
-            <path d="M7 11V7a5 5 0 0 1 10 0v4" />
-          </svg>
-        </div>
-
-        <h1 className="text-2xl font-bold mb-3">{course.title}</h1>
-        <p className="text-lg font-bold mb-2" style={{ color: "var(--accent)" }}>
-          ${parseFloat(course.price.toString()).toFixed(2)}
-        </p>
-        <p className="mb-8" style={{ color: "var(--text-secondary)" }}>
-          Purchase this course to unlock the full video content.
-        </p>
-
-        <div className="flex items-center justify-center gap-4 flex-wrap">
-          <BuyButton
-            productId={course.productId}
-            courseId={id}
-            price={parseFloat(course.price.toString()).toFixed(2)}
-          />
-          <Link href={`/sign-up?redirect=/courses/${id}`} className="btn btn-secondary btn-lg no-underline">
-            Create Account
-          </Link>
-          <Link href="/" className="btn btn-ghost no-underline">
-            ← All Courses
-          </Link>
+          <div className="detail-copy">
+            <p className="eyebrow">Course overview</p>
+            <h1>{course.title}</h1>
+            <p className="detail-description">
+              Access the full course video and learn at your own pace.
+            </p>
+            <div className="detail-perks">
+              <span>▷ Video learning</span>
+              <span>◷ Go at your own pace</span>
+            </div>
+            <div className="detail-purchase">
+              <p className="detail-price">
+                ${Number(course.price).toFixed(2)}{" "}
+                <span>USD · One-time purchase</span>
+              </p>
+              <BuyButton
+                productId={course.productId}
+                courseId={id}
+                price={Number(course.price).toFixed(2)}
+              />
+              {!session && (
+                <p className="detail-account">
+                  New to LearnHub?{" "}
+                  <Link href={`/sign-up?redirect=/courses/${id}`}>
+                    Create an account
+                  </Link>
+                </p>
+              )}
+            </div>
+          </div>
         </div>
       </div>
     );
@@ -107,8 +101,15 @@ export default async function WatchCoursePage({ params }: Props) {
   return (
     <div className="max-w-5xl mx-auto px-6 py-10 animate-fade-in">
       {/* Breadcrumb */}
-      <nav className="flex items-center gap-2 text-sm mb-6" aria-label="Breadcrumb">
-        <Link href="/" style={{ color: "var(--text-muted)" }} className="no-underline hover:underline">
+      <nav
+        className="flex items-center gap-2 text-sm mb-6"
+        aria-label="Breadcrumb"
+      >
+        <Link
+          href="/"
+          style={{ color: "var(--text-muted)" }}
+          className="no-underline hover:underline"
+        >
           Courses
         </Link>
         <span style={{ color: "var(--text-muted)" }}>/</span>
@@ -124,7 +125,7 @@ export default async function WatchCoursePage({ params }: Props) {
           border: "1px solid var(--border)",
         }}
       >
-        <VideoPlayer courseId={id} />
+        <VideoPlayer key={id} courseId={id} />
       </div>
 
       {/* Course Info */}

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { isMediaKey } from "./media";
 
 export const signInSchema = z.object({
   email: z.string().min(1, "Email is required").email("Invalid email address"),
@@ -30,10 +31,12 @@ export const courseSchema = z.object({
       message: "Price must be a valid non-negative number",
     }),
   productId: z.string().min(1, "Polar product ID is required"),
-  image: z.string().url("Image must be a valid URL"),
-  video: z.string().url("Video must be a valid URL"),
+  image: z.string().refine((v) => isMediaKey(v, "image"), "Upload a thumbnail"),
+  video: z.string().refine((v) => isMediaKey(v, "video"), "Upload a video"),
 });
 
 export type SignInValues = z.infer<typeof signInSchema>;
 export type SignUpValues = z.infer<typeof signUpSchema>;
 export type CourseValues = z.infer<typeof courseSchema>;
+
+export const courseApiSchema = courseSchema.extend({ price: z.number().finite().nonnegative() });

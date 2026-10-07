@@ -87,8 +87,10 @@ model Course {
   id        String     @id @default(uuid())
   title     String
   price     Decimal
+  /// Thumbnail object key in the configured S3-compatible bucket.
   image     String
   productId String
+  /// Private video object key in the configured S3-compatible bucket.
   video     String
   purchases Purchase[]
 

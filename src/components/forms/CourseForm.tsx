@@ -1,13 +1,16 @@
 "use client";
 
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { courseQueries, fetchJson } from "@/lib/queries";
 import { useForm } from "@tanstack/react-form";
 import { z } from "zod";
 import { courseSchema, type CourseValues } from "@/lib/validations";
 import { useRouter } from "next/navigation";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Input from "@/components/ui/Input";
 import Button from "@/components/ui/Button";
-import { upload } from "@imagekit/next";
+import { uploadMedia } from "@/lib/upload";
+import { type MediaKind } from "@/lib/media";
 import { getFieldError } from "@/lib/form-utils";
 
 interface CourseFormProps {
@@ -22,10 +25,33 @@ export default function CourseForm({
   defaultValues,
 }: CourseFormProps) {
   const router = useRouter();
+  const queryClient = useQueryClient();
+  const saveCourse = useMutation({
+    mutationFn: (value: CourseValues) =>
+      fetchJson(
+        mode === "create" ? "/api/courses" : `/api/courses/${courseId}`,
+        {
+          method: mode === "create" ? "POST" : "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ...value, price: Number(value.price) }),
+        },
+      ),
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: courseQueries.all }),
+  });
   const [serverError, setServerError] = useState<string | null>(null);
   const [serverSuccess, setServerSuccess] = useState<string | null>(null);
   const [imageUploading, setImageUploading] = useState(false);
   const [videoUploading, setVideoUploading] = useState(false);
+  const [progress, setProgress] = useState({ image: 0, video: 0 });
+  const controllers = useRef<Partial<Record<MediaKind, AbortController>>>({});
+  useEffect(() => {
+    const active = controllers.current;
+    return () => {
+      active.image?.abort();
+      active.video?.abort();
+    };
+  }, []);
   const imageInputRef = useRef<HTMLInputElement>(null);
   const videoInputRef = useRef<HTMLInputElement>(null);
 
@@ -39,72 +65,65 @@ export default function CourseForm({
     },
     validators: { onChange: courseSchema },
     onSubmit: async ({ value }) => {
+      if (imageUploading || videoUploading) return;
       setServerError(null);
       setServerSuccess(null);
 
-      const url =
-        mode === "create" ? "/api/courses" : `/api/courses/${courseId}`;
-      const method = mode === "create" ? "POST" : "PATCH";
-
-      const res = await fetch(url, {
-        method,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          title: value.title,
-          price: parseFloat(value.price),
-          productId: value.productId,
-          image: value.image,
-          video: value.video,
-        }),
-      });
-
-      const data = await res.json();
-      if (
-        data === "Not an admin" ||
-        data === "Server error" ||
-        data === "server error"
-      ) {
-        setServerError("An error occurred. Please try again.");
-        return;
-      }
-      setServerSuccess(
-        mode === "create"
-          ? "Course created successfully!"
-          : "Course updated successfully!",
-      );
-      if (mode === "create") {
-        setTimeout(() => router.push("/dashboard"), 1000);
+      try {
+        await saveCourse.mutateAsync(value);
+        setServerSuccess(
+          mode === "create"
+            ? "Course created successfully!"
+            : "Course updated successfully!",
+        );
+        if (mode === "create") router.push("/dashboard");
+        router.refresh();
+      } catch (error) {
+        setServerError(
+          error instanceof Error
+            ? error.message
+            : "Could not save this course. Please try again.",
+        );
       }
     },
   });
 
   async function handleFileUpload(
     file: File,
+    kind: MediaKind,
     setUploading: (v: boolean) => void,
-    onSuccess: (url: string) => void,
+    onSuccess: (key: string) => void,
   ) {
+    setServerError(null);
+    setServerSuccess(null);
     setUploading(true);
+    setProgress((previous) => ({ ...previous, [kind]: 0 }));
+    const controller = new AbortController();
+    controllers.current[kind] = controller;
     try {
-      // Get auth params from the upload API
-      const authRes = await fetch("/api/upload");
-      const authParams = await authRes.json();
-
-      const response = await upload({
+      const key = await uploadMedia(
         file,
-        fileName: file.name,
-        publicKey: authParams.publicKey,
-        signature: authParams.signature,
-        expire: authParams.expire,
-        token: authParams.token,
-      });
-
-      if (!response.url)
-        throw new Error("Upload succeeded but URL is missing.");
-      onSuccess(response.url);
-    } catch {
-      setServerError("Upload failed. Please try again.");
+        kind,
+        (value) => {
+          setProgress((previous) => ({ ...previous, [kind]: value }));
+        },
+        controller.signal,
+      );
+      onSuccess(key);
+    } catch (error) {
+      setServerError(
+        controller.signal.aborted
+          ? "Upload cancelled."
+          : error instanceof Error
+            ? error.message
+            : "Upload failed. Please try again.",
+      );
     } finally {
+      delete controllers.current[kind];
       setUploading(false);
+      const input =
+        kind === "image" ? imageInputRef.current : videoInputRef.current;
+      if (input) input.value = "";
     }
   }
 
@@ -186,10 +205,7 @@ export default function CourseForm({
       </form.Field>
 
       {/* Image Upload */}
-      <form.Field
-        name="image"
-        validators={{ onChange: z.string().url("Must be a valid URL") }}
-      >
+      <form.Field name="image">
         {(field) => (
           <div className="form-field">
             <label className="form-label" htmlFor="course-image-upload">
@@ -225,20 +241,30 @@ export default function CourseForm({
                 ref={imageInputRef}
                 id="course-image-upload"
                 type="file"
-                accept="image/*"
+                accept="image/jpeg,image/png,image/webp"
+                disabled={imageUploading}
                 className="form-input"
                 style={{ cursor: "pointer", paddingTop: "0.4rem" }}
                 onChange={(e) => {
                   const file = e.target.files?.[0];
                   if (!file) return;
-                  handleFileUpload(file, setImageUploading, (url) =>
+                  handleFileUpload(file, "image", setImageUploading, (url) =>
                     field.handleChange(url),
                   );
                 }}
               />
               {imageUploading && (
                 <p className="text-sm" style={{ color: "var(--text-muted)" }}>
-                  Uploading image…
+                  {progress.image === 100
+                    ? "Verifying upload…"
+                    : `Uploading image… ${progress.image}%`}{" "}
+                  <button
+                    type="button"
+                    className="underline"
+                    onClick={() => controllers.current.image?.abort()}
+                  >
+                    Cancel upload
+                  </button>
                 </p>
               )}
               {field.state.value && (
@@ -259,11 +285,13 @@ export default function CourseForm({
         )}
       </form.Field>
 
+      <p className="text-sm">
+        Thumbnails: JPEG, PNG or WebP, up to 10 MiB. Videos: MP4 or WebM, up to
+        1 GiB. Use H.264/AAC MP4 for broad browser support.
+      </p>
+
       {/* Video Upload */}
-      <form.Field
-        name="video"
-        validators={{ onChange: z.string().url("Must be a valid URL") }}
-      >
+      <form.Field name="video">
         {(field) => (
           <div className="form-field">
             <label className="form-label" htmlFor="course-video-upload">
@@ -299,20 +327,30 @@ export default function CourseForm({
                 ref={videoInputRef}
                 id="course-video-upload"
                 type="file"
-                accept="video/*"
+                accept="video/mp4,video/webm"
+                disabled={videoUploading}
                 className="form-input"
                 style={{ cursor: "pointer", paddingTop: "0.4rem" }}
                 onChange={(e) => {
                   const file = e.target.files?.[0];
                   if (!file) return;
-                  handleFileUpload(file, setVideoUploading, (url) =>
+                  handleFileUpload(file, "video", setVideoUploading, (url) =>
                     field.handleChange(url),
                   );
                 }}
               />
               {videoUploading && (
                 <p className="text-sm" style={{ color: "var(--text-muted)" }}>
-                  Uploading video…
+                  {progress.video === 100
+                    ? "Verifying upload…"
+                    : `Uploading video… ${progress.video}%`}{" "}
+                  <button
+                    type="button"
+                    className="underline"
+                    onClick={() => controllers.current.video?.abort()}
+                  >
+                    Cancel upload
+                  </button>
                 </p>
               )}
               {field.state.value && (

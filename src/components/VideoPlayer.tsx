@@ -1,61 +1,63 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { Video } from "@imagekit/next";
+import { useRef, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import Spinner from "@/components/ui/Spinner";
+import { courseQueries } from "@/lib/queries";
 
-interface VideoPlayerProps {
-  courseId: string;
-}
+export default function VideoPlayer({ courseId }: { courseId: string }) {
+  const video = useQuery(courseQueries.video(courseId));
+  const [playbackError, setPlaybackError] = useState<string | null>(null);
+  const position = useRef(0);
 
-export default function VideoPlayer({ courseId }: VideoPlayerProps) {
-  const [videoUrl, setVideoUrl] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    async function fetchSignedUrl() {
-      try {
-        const res = await fetch(`/api/courses/${courseId}`);
-        if (!res.ok) {
-          const data = await res.json();
-          setError(data.error || "Failed to load video");
-          return;
-        }
-        const data = await res.json();
-        setVideoUrl(data.url);
-      } catch {
-        setError("Failed to load video");
-      }
-    }
-
-    fetchSignedUrl();
-  }, [courseId]);
-
-  if (error) {
+  if (video.isPending)
     return (
       <div
         className="flex items-center justify-center py-20"
-        style={{ color: "var(--error)" }}
+        role="status"
+        aria-label="Loading video"
       >
-        <p>{error}</p>
-      </div>
-    );
-  }
-
-  if (!videoUrl) {
-    return (
-      <div className="flex items-center justify-center py-20">
         <Spinner size={32} />
       </div>
     );
-  }
+  if (video.isError || playbackError)
+    return (
+      <div className="query-state" role="alert">
+        <p>{playbackError || video.error?.message}</p>
+        <button
+          className="btn btn-secondary"
+          disabled={video.isFetching}
+          onClick={async () => {
+            const result = await video.refetch();
+            if (result.isSuccess) setPlaybackError(null);
+          }}
+        >
+          {video.isFetching ? "Loading…" : "Reload video"}
+        </button>
+      </div>
+    );
 
   return (
-    <Video
-      src={videoUrl}
+    <video
+      key={video.data.url}
+      aria-label="Course video"
+      src={video.data.url}
       controls
+      playsInline
+      preload="metadata"
       className="w-full"
-      style={{ maxHeight: "560px", display: "block" }}
+      style={{ maxHeight: 560, display: "block" }}
+      onTimeUpdate={(event) => {
+        position.current = event.currentTarget.currentTime;
+      }}
+      onLoadedMetadata={(event) => {
+        event.currentTarget.currentTime = position.current;
+      }}
+      onError={() =>
+        setPlaybackError(
+          "Playback failed or the link expired. Reload to get a fresh link. If it still fails, the video format may not be supported.",
+        )
+      }
     />
   );
 }

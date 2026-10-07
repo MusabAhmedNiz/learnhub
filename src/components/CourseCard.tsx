@@ -1,9 +1,9 @@
 "use client";
+import { thumbnailSrc } from "@/lib/media";
 import Image from "next/image";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import Badge from "@/components/ui/Badge";
-import { authClient } from "@/lib/auth-client";
+import { useState } from "react";
+import CoursePlaceholder from "@/components/CoursePlaceholder";
 
 interface CourseCardProps {
   id: string;
@@ -13,93 +13,71 @@ interface CourseCardProps {
   productId: string;
   purchased?: boolean;
 }
-
 export default function CourseCard({
   id,
   title,
   price,
   image,
-  productId,
   purchased = false,
 }: CourseCardProps) {
-  const { data: session } = authClient.useSession();
-  const router = useRouter();
-  const priceNum = typeof price === "string" ? parseFloat(price) : price;
-  const courseUrl = `/courses/${id}`;
-
-  function handleBuy() {
-    if (!session?.user) {
-      // Not signed in — redirect to sign-in with a return path
-      router.push(`/sign-in?redirect=/courses/${id}`);
-      return;
-    }
-    // Build checkout URL with user ID so Polar knows who's buying
-    const url = `/api/checkout?products=${productId}&customerExternalId=${session.user.id}`;
-    window.location.href = url;
-  }
-
+  const [imageFailed, setImageFailed] = useState(false);
   return (
-    <article
-      className="card"
-      style={{ display: "flex", flexDirection: "column" }}
-    >
-      {/* Clickable image → course page */}
-      <Link href={courseUrl} className="relative overflow-hidden block" style={{ aspectRatio: "16/9" }}>
-        <Image
-          src={image}
-          alt={title}
-          fill
-          className="object-cover"
-          style={{ transition: "transform 0.4s ease" }}
-          sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
-          onMouseEnter={(e) => {
-            (e.currentTarget as HTMLImageElement).style.transform = "scale(1.05)";
-          }}
-          onMouseLeave={(e) => {
-            (e.currentTarget as HTMLImageElement).style.transform = "scale(1)";
-          }}
-        />
-        <div
-          className="absolute inset-0"
-          style={{ background: "linear-gradient(to top, rgba(8,12,20,0.8) 0%, transparent 50%)" }}
-        />
-        {purchased && (
-          <div className="absolute top-3 right-3">
-            <Badge variant="success">Enrolled</Badge>
-          </div>
+    <article className="course-card">
+      <Link
+        href={`/courses/${id}`}
+        className="course-cover no-underline"
+        tabIndex={-1}
+        aria-hidden="true"
+      >
+        {image && !imageFailed ? (
+          <Image
+            src={thumbnailSrc(id)}
+            unoptimized
+            alt=""
+            fill
+            sizes="(max-width: 640px) 100vw, (max-width: 980px) 50vw, 33vw"
+            onError={() => setImageFailed(true)}
+            className="object-cover"
+          />
+        ) : (
+          <CoursePlaceholder />
         )}
+        {purchased && <span className="cover-tag">Purchased</span>}
       </Link>
-
-      {/* Body */}
-      <div className="flex flex-col flex-1 p-5 gap-4">
-        <Link href={courseUrl} className="flex-1 no-underline" style={{ color: "var(--text-primary)" }}>
-          <h3
-            className="font-semibold text-base leading-snug"
-            style={{ transition: "color 0.2s" }}
-            onMouseEnter={(e) => { (e.currentTarget as HTMLHeadingElement).style.color = "var(--accent)"; }}
-            onMouseLeave={(e) => { (e.currentTarget as HTMLHeadingElement).style.color = "var(--text-primary)"; }}
-          >
+      <div className="course-card-body">
+        <h3>
+          <Link href={`/courses/${id}`} className="no-underline">
             {title}
-          </h3>
-        </Link>
-
-        <div className="flex items-center justify-between gap-3">
-          <span className="text-xl font-bold" style={{ color: "var(--accent)" }}>
-            ${priceNum.toFixed(2)}
-          </span>
-
-          {purchased ? (
-            <Link href={courseUrl} className="btn btn-primary btn-sm no-underline">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-                <path d="M8 5v14l11-7L8 5z" />
-              </svg>
-              Watch Now
-            </Link>
-          ) : (
-            <button onClick={handleBuy} className="btn btn-primary btn-sm">
-              {session?.user ? "Buy Course" : "Sign In to Buy"}
-            </button>
-          )}
+          </Link>
+        </h3>
+        <p className="course-format">
+          <svg
+            width="15"
+            height="15"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.7"
+            aria-hidden="true"
+          >
+            <rect x="3" y="4" width="18" height="16" rx="3" />
+            <path d="m10 8 6 4-6 4V8Z" />
+          </svg>
+          Video course <span aria-hidden="true">·</span> Self-paced
+        </p>
+        <div className="course-card-footer">
+          <strong>
+            {purchased
+              ? "Full access"
+              : new Intl.NumberFormat("en-US", {
+                  style: "currency",
+                  currency: "USD",
+                }).format(Number(price))}
+          </strong>
+          <Link href={`/courses/${id}`} className="course-link no-underline">
+            {purchased ? "Start learning" : "View course"}{" "}
+            <span aria-hidden="true">→</span>
+          </Link>
         </div>
       </div>
     </article>

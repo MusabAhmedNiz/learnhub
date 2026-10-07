@@ -1,5 +1,6 @@
 "use client";
 
+import { useQueryClient } from "@tanstack/react-query";
 import { useForm } from "@tanstack/react-form";
 import { z } from "zod";
 import { signInSchema } from "@/lib/validations";
@@ -13,6 +14,7 @@ import { getFieldError } from "@/lib/form-utils";
 
 export default function SignInForm() {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const [serverError, setServerError] = useState<string | null>(null);
 
   const form = useForm({
@@ -27,10 +29,20 @@ export default function SignInForm() {
         password: value.password,
       });
       if (error) {
-        setServerError(error.message ?? "Invalid credentials. Please try again.");
+        setServerError(
+          error.message ?? "Invalid credentials. Please try again.",
+        );
         return;
       }
-      router.push("/");
+      queryClient.clear();
+      const requestedPath = new URLSearchParams(window.location.search).get(
+        "redirect",
+      );
+      router.push(
+        requestedPath?.startsWith("/courses/") && !requestedPath.includes("\\")
+          ? requestedPath
+          : "/",
+      );
       router.refresh();
     },
   });
@@ -91,7 +103,15 @@ export default function SignInForm() {
           style={{ background: "var(--error-light)", color: "var(--error)" }}
           role="alert"
         >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+          <svg
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            aria-hidden="true"
+          >
             <circle cx="12" cy="12" r="10" />
             <line x1="12" y1="8" x2="12" y2="12" />
             <line x1="12" y1="16" x2="12.01" y2="16" />
@@ -116,9 +136,15 @@ export default function SignInForm() {
         )}
       </form.Subscribe>
 
-      <p className="text-center text-sm" style={{ color: "var(--text-secondary)" }}>
+      <p
+        className="text-center text-sm"
+        style={{ color: "var(--text-secondary)" }}
+      >
         Don&apos;t have an account?{" "}
-        <Link href="/sign-up" style={{ color: "var(--accent)", fontWeight: 600 }}>
+        <Link
+          href="/sign-up"
+          style={{ color: "var(--accent)", fontWeight: 600 }}
+        >
           Create one
         </Link>
       </p>

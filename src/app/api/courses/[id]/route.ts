@@ -1,8 +1,10 @@
+import { courseApiSchema } from "@/lib/validations";
+import { verifyCourseMedia } from "@/lib/course-media";
+import { signedMediaUrl } from "@/lib/storage";
 import { auth } from "@/auth";
 import prisma from "@/lib/prisma";
 import { headers } from "next/headers";
 import { NextResponse } from "next/server";
-import ImageKit from "@imagekit/nodejs";
 
 async function adminCheck() {
   const session = await auth.api.getSession({ headers: await headers() });
@@ -10,10 +12,6 @@ async function adminCheck() {
   if (session.user.role !== "admin") return null;
   return session.user;
 }
-
-const imagekit = new ImageKit({
-  privateKey: process.env.IMAGEKIT_PRIVATE_KEY,
-});
 
 export async function GET(
   request: Request,
@@ -33,33 +31,28 @@ export async function GET(
         where: {
           userId: session.user.id,
           courseId: id,
-        }
-      })
-      if(!purchase){
+        },
+      });
+      if (!purchase) {
         return NextResponse.json({ error: "Not purchased" }, { status: 403 });
       }
     }
 
-  const course = await prisma.course.findUnique({
-    where: {
-      id: id,
-    },
-    select: { video: true },
-  });
-  if(!course){
-    return NextResponse.json({ error: "Course not found" }, { status: 404 });
-  }
-  
-  const videoUrl = imagekit.helper.buildSrc({
-    urlEndpoint: process.env.IMAGEKIT_URL_ENDPOINT!,
-    src: course.video,
-    signed : true,
-    expiresIn: 60 * 60, 
-  });
-  
-  return NextResponse.json({ url: videoUrl } , { status: 200 });
-  } catch (error) {
-    return NextResponse.json({error:"server error"},{status:500})
+    const course = await prisma.course.findUnique({
+      where: { id },
+      select: { video: true },
+    });
+    if (!course) {
+      return NextResponse.json({ error: "Course not found" }, { status: 404 });
+    }
+
+    const videoUrl = await signedMediaUrl(course.video, "video");
+
+    return NextResponse.json({ url: videoUrl }, {
+      headers: { "Cache-Control": "private, no-store" },
+    });
+  } catch {
+    return NextResponse.json({ error: "Could not load the video" }, { status: 500 });
   }
 }
 
@@ -74,7 +67,14 @@ export async function PATCH(
     }
 
     const { id } = await params;
-    const data = await request.json();
+    const parsed = courseApiSchema.safeParse(await request.json().catch(() => null));
+    if (!parsed.success) return NextResponse.json({ error: parsed.error.issues[0].message }, { status: 400 });
+    const existing = await prisma.course.findUnique({ where: { id } });
+    if (!existing) return NextResponse.json({ error: "Course not found" }, { status: 404 });
+    try { await verifyCourseMedia(parsed.data); } catch {
+      return NextResponse.json({ error: "Upload valid course media before saving." }, { status: 400 });
+    }
+    const data = parsed.data;
     await prisma.course.update({
       where: {
         id: id,
@@ -89,7 +89,7 @@ export async function PATCH(
     });
 
     return NextResponse.json({ message: "course updated" }, { status: 200 });
-  } catch (error) {
+  } catch {
     return NextResponse.json({ error: "Server Error" }, { status: 500 });
   }
 }
@@ -110,7 +110,7 @@ export async function DELETE(
       },
     });
     return NextResponse.json({ message: "Course deleted" }, { status: 200 });
-  } catch (error) {
+  } catch {
     return NextResponse.json({ error: "Server Error" }, { status: 500 });
   }
 }
