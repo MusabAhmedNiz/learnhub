@@ -77,7 +77,6 @@ export default async function WatchCoursePage({ params }: Props) {
                 <span>USD · One-time purchase</span>
               </p>
               <BuyButton
-                productId={course.productId}
                 courseId={id}
                 price={Number(course.price).toFixed(2)}
               />

@@ -3,12 +3,11 @@ import { useRouter } from "next/navigation";
 import { authClient } from "@/lib/auth-client";
 
 interface BuyButtonProps {
-  productId: string;
   courseId: string;
   price: string;
 }
 
-export default function BuyButton({ productId, courseId, price }: BuyButtonProps) {
+export default function BuyButton({ courseId, price }: BuyButtonProps) {
   const { data: session } = authClient.useSession();
   const router = useRouter();
 
@@ -17,7 +16,7 @@ export default function BuyButton({ productId, courseId, price }: BuyButtonProps
       router.push(`/sign-in?redirect=/courses/${courseId}`);
       return;
     }
-    window.location.href = `/api/checkout?products=${productId}&customerExternalId=${session.user.id}`;
+    window.location.href = `/api/checkout?courseId=${encodeURIComponent(courseId)}`;
   }
 
   return (

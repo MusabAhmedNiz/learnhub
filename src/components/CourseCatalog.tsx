@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { authClient } from "@/lib/auth-client";
@@ -9,9 +9,17 @@ import CourseCard from "@/components/CourseCard";
 
 export default function CourseCatalog({
   libraryUserId,
+  checkoutCourseId,
 }: {
   libraryUserId?: string;
+  checkoutCourseId?: string;
 }) {
+  const [waitingForPurchase, setWaitingForPurchase] = useState(!!checkoutCourseId);
+  useEffect(() => {
+    if (!checkoutCourseId) return;
+    const timer = setTimeout(() => setWaitingForPurchase(false), 60_000);
+    return () => clearTimeout(timer);
+  }, [checkoutCourseId]);
   const { data: session } = authClient.useSession();
   const userId = libraryUserId ?? session?.user.id;
   const catalog = useQuery({
@@ -21,6 +29,9 @@ export default function CourseCatalog({
   const library = useQuery({
     ...courseQueries.library(userId ?? "anonymous"),
     enabled: !!userId,
+    refetchInterval: waitingForPurchase && checkoutCourseId
+      ? (query) => query.state.data?.some((course) => course.id === checkoutCourseId) ? false : 2_000
+      : false,
   });
   const query = libraryUserId ? library : catalog;
   const [search, setSearch] = useState("");
@@ -62,6 +73,11 @@ export default function CourseCatalog({
           </Link>
         )}
       </div>
+      {checkoutCourseId && !library.data?.some((course) => course.id === checkoutCourseId) && (
+        <p role="status">
+          {waitingForPurchase ? "Confirming your course access…" : "Course access is taking longer than expected. Please refresh in a moment."}
+        </p>
+      )}
       <div className="catalog-toolbar">
         <label className="search-field">
           <svg

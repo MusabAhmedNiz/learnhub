@@ -30,12 +30,16 @@ For test deployments, set `POLAR_SERVER=sandbox` and use Polar sandbox credentia
 ## How a purchase becomes course access
 
 1. A course stores the ID of its corresponding Polar product.
-2. The checkout flow associates the customer with the signed-in user's ID.
-3. Polar sends a paid-order event to `/api/webhooks/polar`; the SDK handler uses the configured webhook secret for verification.
+2. The checkout endpoint reads the selected course and signed-in user on the server, and includes the course ID in Polar metadata.
+3. Polar sends a paid-order event to `/api/webhooks/polar`; the SDK handler verifies its signature and checks that the selected course matches the paid product.
 4. The handler maps the product to a course and upserts a `Purchase`. The database's unique `(userId, courseId)` constraint prevents duplicate purchases for the same user and course.
 5. The player requests `/api/courses/[id]`. After checking access, the server returns a signed video URL with a one-hour expiry. Reloading a failed or expired video rechecks access and preserves the playback position.
 
 Keep the R2 bucket private: do not enable an r2.dev URL or public custom domain. Thumbnails have a public course-specific redirect endpoint; videos are signed only after authorization.
+
+For a protected Vercel preview, configure Polar with the exact `/api/webhooks/polar` URL, without a trailing slash, and append `?x-vercel-protection-bypass=<automation-bypass-secret>`. Keep that full URL private. Vercel otherwise returns 401 before the webhook handler runs. Polar does not follow redirect responses. See [Vercel's webhook bypass instructions](https://vercel.com/docs/deployment-protection/methods-to-bypass-deployment-protection/protection-bypass-automation).
+
+After checkout, the library checks for the selected course for up to one minute while the webhook arrives. Older orders without course metadata can be matched only when their product identifies a single course. If multiple courses share that product, the webhook logs the order ID for manual reconciliation rather than granting an arbitrary course.
 
 ## Run locally
 
